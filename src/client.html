@@ -1,0 +1,737 @@
+<html>
+  <head>
+    <style>
+        .hide {
+            display: none;
+        }
+        .localVideo {
+            position: absolute;
+            width: 240px;
+            bottom: 0;
+            right: 10;
+        }
+        .localVideo video {
+            width: 100%;
+        }
+        .stats-font {
+            font-family: "monospace";
+            font-size: 56%;
+            text-align: center;
+        }
+        .vthumbStats {
+            max-width: 160px;
+        }
+        .remote-player-container {
+            position: relative;
+            border-spacing: 0px;
+            display: inline-block;
+        }
+        .remote-player-container.vthumb {
+            width: 160px;
+        }
+        .remote-player-cell {
+            position: relative;
+        }
+        .speaker-thumb-player {
+            position: absolute;
+            right: 0px;
+            bottom: 0px;
+            width: 80;
+            height: 45;
+        }
+        .avatar {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: lightblue;
+            font: 2em Arial;
+            text-align: center;
+            vertical-align: middle;
+        }
+        .mute-icon {
+            position: absolute;
+            right: 0;
+            bottom: 0;
+            width: 24px;
+            height: 24px;
+            color: white;
+            z-index: 10;
+        }
+        .screenshare-icon {
+            position: absolute;
+            right: 0;
+            bottom: 0;
+            width: 24px;
+            height: 24px;
+            color: lightblue;
+            z-index: 10;
+        }
+        #spkCheck {
+            user-select: none;
+            border: 1px solid #eeeeee;
+            border-radius: 2px;
+            padding: 1px;
+        }
+        .spk-req-item {
+            user-select: none;
+            border: 1px solid #eeeeee;
+            border-radius: 2px;
+            padding: 1px;
+            background-color: lightblue;
+            width: 60px;
+        }
+        .spk-req-pending {
+            background-color: lightblue;
+        }
+        .spk-req-speaking {
+            background-color: lightgreen;
+        }
+        .screenshare-checked {
+            margin: 2px;
+            padding: 2px;
+            border-style: solid;
+            border-width: thin;
+            border-color: lightgreen;
+        }
+        .screenshare-unchecked {
+            margin: 2px;
+            padding: 2px;
+            border-style: solid;
+            border-width: thin;
+            border-color: #eeeeee;
+        }
+        .audio-level-ind {
+            height: 2px;
+            width: 0%;
+            background-color: #00ee00;
+            padding: 0;
+        }
+        .call-info {
+            width: 99%;
+            text-align: right;
+        }
+        .moderator-on {
+            padding: 6;
+            background-color: lightskyblue;
+        }
+        #layerRadios {
+            margin: 0px;
+        }
+        .on-hold {
+            position: absolute;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0.3;
+            background-color: black;
+            font-size: 40;
+            text-align: center;
+            line-height: 2em;
+            color: white;
+        }
+    </style>
+  </head>
+  <body>
+    <canvas id=localCanvas style="display:none" width=640 height=360></canvas>
+    <table style="white-space: nowrap;"><tr>
+      <td><button id="startBtn" onclick="start()">Connect</button></td>
+      <td><div id="spkCheck" onclick="onSpkCheckClick(event);" title=
+        "Raise hand (request to become an active speaker). If you are a mod, you will immediately become one.\
+         If not, your username will appear in the 'speaker reqs' list in the GUI, and a moderator can approve the request\
+         by double clicking it or reject by right-clicking it">Speak</div></td>
+      <td><input type="checkbox" onchange="onHoldChk(this.checked);" title="Put call on hold / release hold">Hold</input>
+      <td><input type="checkbox" onchange="onVideoEnableChk(this.checked);" checked title="Mute/unmute camera">Camera</input></td>
+      <td><input type="checkbox" onchange="onAudioEnableChk(this.checked);" checked title="Mute/unmute mic">Audio</input></td>
+      <td><div class="screenshare-unchecked" onclick="onScreenshareEnableChk();" id="screenshareChk" title="Start shreenshare">Screen</div></td>
+      <!--
+      <td><button title="Scroll thumbnail videos back" onclick="gClient.scrollVthumbsBack(1);"> << </button></td>
+      <td><button title="Scroll thumbnail videos forward" onclick="gClient.scrollVthumbsForward(1);"> >> </button></td>
+      -->
+      <td style="width:10%" />
+      <td>
+        <form id="layerRadios" action="" title="Select quality of received speaker videos"><table style="white-space: nowrap;">
+          <tr>
+            <td>res layer:</td>
+            <td>
+              <input type="radio" name=spatial value=0 onchange="onLayerBtn()" />
+              <label for=0>0</label>
+              <input type="radio" name=spatial value=1 onchange="onLayerBtn()" />
+              <label for=1>1</label>
+              <input type="radio" name=spatial value=2 checked onchange="onLayerBtn()" />
+              <label for=2>2</label>
+            </td>
+          </tr>
+          <tr>
+            <td>fps layer:</td>
+            <td>
+              <input type="radio" name=temporal value=0 onchange="onLayerBtn()" />
+              <label for=0>0</label>
+              <input type="radio" name=temporal value=1 onchange="onLayerBtn()" />
+              <label for=1>1</label>
+              <input type="radio" name=temporal value=2 checked onchange="onLayerBtn()" />
+              <label for=2>2</label>
+            </td>
+          </tr>
+        </table></form>
+      </td>
+      <td style="width: 20%"></td>
+      <td><div id=moderatorInd class="moderator-on hide" title="You are moderator in this call">mod</div></td>
+      <td id=callInfo class="call-info"></td>
+    </tr></table>
+    <table class="spkReqTable"><tr id="spkReqs"></tr></table>
+    <div style="width: 100%" id="hires"></div>
+    <div style="width: 100%" id="vthumbsPinned"></div>
+    <div style="width: 100%" id="vthumbs"></div>
+    <table class="localVideo">
+        <tr>
+            <td style="text-align: center">Local video</td>
+        </tr>
+        <tr>
+            <td style="position: relative">
+                <div id="localAvatar" class=avatar>No Video</div>
+                <div id="localMuteIcon" class=mute-icon>&#128263;</div>
+                <div id="gLocalOnHoldInd" class="on-hold hide">||</div>
+                <video id=localVideo ondblclick="onLocalVideoDblClick()"/>
+            </td>
+        </tr>
+        <tr><td id=txStats class=stats-font></td></tr>
+    </table>
+    <br />
+    <div id=remoteVideos></div>
+    <script src="sfuClient.bundle.js"></script>
+    <script src="marquee.js"></script>
+    <script>
+    function assert(cond) {
+        if (!cond) {
+            throw new Error("Assertion failed");
+        }
+    }
+    class App {
+        constructor() {
+            this.playerIdCtr = 0;
+            this.contVthumbsPinned = document.getElementById("vthumbsPinned");
+            this.contVthumbs = document.getElementById("vthumbs");
+            this.contHires = document.getElementById("hires");
+            this.txStats = document.getElementById("txStats");
+            this.peerKeys = new Set();
+        }
+        onLocalMediaChange(avChange) {
+            if (avChange & Av.Video) {
+                let vtrack = gClient.mainSentVtrack();
+                if (vtrack) {
+                    SfuClient.playerPlay(gLocalVid, vtrack);
+                    hideElem(gLocalAvatar);
+                } else {
+                    SfuClient.playerStop(gLocalVid);
+                    unhideElem(gLocalAvatar);
+                }
+            }
+            if (avChange & Av.Audio) {
+                if (gClient.localAudioMuted()) {
+                    unhideElem(byId("localMuteIcon"));
+                } else {
+                    hideElem(byId("localMuteIcon"));
+                }
+            }
+            if (avChange & Av.onHold) {
+                let cl = gLocalOnHoldInd.classList;
+                if (gClient.isOnHold()) {
+                    gLocalVid.style.opacity = "0";
+                    cl.remove("hide");
+                } else {
+                    cl.add("hide");
+                    gLocalVid.style.opacity = "1";
+                }
+            }
+        }
+        onScreenshare(enabled) {
+            setClass(screenChk, enabled ? "screenshare-checked" : "screenshare-unchecked");
+        }
+        onConnecting() {
+            startBtn.disabled = true;
+            startBtn.innerHTML = "Connecting";
+        }
+        onConnected() {
+            startBtn.innerHTML = "Disconnect";
+            startBtn.disabled = false;
+        }
+        onDisconnect(code, willReconn) {
+            if (willReconn) {
+                startBtn.innerHTML = "Reconnecting";
+                startBtn.disabled = true;
+            } else {
+                setClass(spkCheck);
+                setClass(screenChk, "screenshare-unchecked");
+                startBtn.innerHTML = "Connect";
+                startBtn.disabled = false;
+                if (code !== SfuClient.TermCode.kUserHangup) {
+                    alert(`Fatal: ${SfuClient.TermCode[code]}`);
+                }
+            }
+        }
+        onNewPlayer(player) {
+            console.warn("onNewPlayer");
+            return new PlayerGui(this, player);
+        }
+        onSpeaker() {
+            setClass(spkCheck, "spk-req-speaking");
+        }
+        onNoSpeaker() {
+            setClass(spkCheck);
+        }
+        onPeerSpeaker(peer) {
+            if (!localStorage.noAudioLevel) {
+                let player = peer.vThumbPlayer || peer.hiResPlayer;
+                if (player) {
+                    // this is the codepath when a peer becomes a speaker and we have its thumbnail video
+                    peer.requestAudioLevel(player.gui.onAudioLevel.bind(player.gui));
+                }
+            }
+        }
+        onPeerNoSpeaker(peer) {
+            if (peer.hiResPlayer) {
+                peer.hiResPlayer.destroy();
+            }
+            if (!peer.vThumbPlayer) {
+                peer.requestHiResVideo(gHiResDivider);
+            }
+        }
+        onPeerSpeakReq(peer) {
+            if (!spkReqs.cells.length) {
+                let title = spkReqs.insertCell(0);
+                title.innerHTML = "Speak reqs:";
+            }
+            let cell = peer.data.spkReq = spkReqs.insertCell(-1);
+            setClass(cell, "spk-req-item");
+            cell.setAttribute("title", "If you are a moderator, you can approve this speak request by double clicking it, or reject it by right-clicking");
+            cell.addEventListener("dblclick", () => gClient.sendSpeakRequest(peer.cid));
+            cell.addEventListener("contextmenu", function(e) {
+                e.preventDefault();
+                gClient.cancelSpeakRequest(peer.cid)
+            });
+            cell.innerHTML = peer.userId;
+        }
+        onPeerSpeakReqDel(peer) {
+            if (!peer.data.spkReq) {
+                return;
+            }
+            spkReqs.removeChild(peer.data.spkReq);
+            delete peer.data.spkReq;
+            if (spkReqs.cells.length === 1) {
+                spkReqs.removeChild(spkReqs.cells.item(0));
+            }
+        }
+        onOwnSpeakRequest(peer) {
+            setClass(spkCheck, "spk-req-pending");
+        }
+        onOwnSpeakRequestDel(peer) {
+            setClass(spkCheck, "");
+        }
+        onPeerJoined(peer) {
+            console.warn("OnPeerJoined", peer);
+            peer.requestHiResVideo(gHiResDivider);
+            //this.maybeAddAdjacentVthumb();
+        }
+        onPeerLeft(peer) {
+            // players have already been destroyed and their onDestroy handlers have been called
+            //this.maybeAddAdjacentVthumb();
+        }
+        onJoined() {
+            this.displayCallInfo();
+            //gClient.enableSpeakerDetector(true);
+            for (let peer of gClient.peers.values()) {
+                peer.requestHiResVideo(gHiResDivider);
+            }
+        }
+        displayCallInfo() {
+            let loc = window.location;
+            let url = "https://"+ loc.hostname + ":" + loc.port + "/www/client.html?callid=" + gClient.callid;
+            if (gClient.callKey) {
+                url += "&key=" + SfuClient.binToHex(gClient.callKey);
+            }
+            document.getElementById("callInfo").innerHTML =
+                '<pre style="display: inline-block; margin: 0px">user: "' + gClient.userId +
+                '"['+ gClient.cid +'] callid: "' + gClient.callid +
+                '"  </pre><a href="' + url +'" target=_blank>join url</a>';
+        }
+        onPeerModerator(peer, enable) {
+        }
+        onModerator(enable) {
+            if (enable) {
+                unhideElem(byId("moderatorInd"));
+            } else {
+                hideElem(byId("moderatorInd"));
+            }
+        }
+        onVideoTxStat(tag, info, raw) {
+            if (!info) {
+                this.txStats.innerHTML = "no video (" + gClient.sentTracksString() + ")";
+                return;
+            }
+            if (info.keyfps) {
+                info.keyfps = Math.round(info.keyfps * 100) / 100;
+            }
+            if (info.kbps) {
+                info.kbps = Math.round(info.kbps * 100) / 100;
+            }
+            info.per = Math.round(info.per * 1000) / 1000;
+            this.txStats.innerHTML = `(${gClient.sentTracksString()}) ${raw.frameWidth}x${raw.frameHeight} kbps:${Math.round(info.kbps)}
+                 fps:${(info.fps || 0)} kfs:${info.keyfps}`;
+        }
+        async encryptKeyTo(key, userId) {
+            return SfuClient.binToHex(key);
+        }
+        async decryptKeyFrom(key, userId) {
+            if (!this.peerKeys.has(userId)) {
+                //await SfuClient.msDelay(Math.random() * 400 + 200);
+                this.peerKeys.add(userId);
+            }
+            return SfuClient.hexToBin(key).buffer;
+        }
+        onActiveSpeakerChange(speaker, prev) {
+            if (!speaker) { // us
+                return;
+            }
+            let player = speaker.requestHiResVideo(gHiResDivider);
+            if (player.delTimer) {
+                clearTimeout(player.delTimer);
+                delete player.delTimer;
+            }
+            if (!prev) {
+                return;
+            }
+            let prevPlayer = prev.hiResPlayer;
+            if (!prevPlayer) {
+                return;
+            }
+            let prevPlayerGui = prevPlayer.gui;
+            assert(!prevPlayerGui.delTimer);
+            prevPlayerGui.delTimer = setTimeout(() => prevPlayer.destroy(), 4000);
+        }
+        // vthumb scroll
+        hasSpaceForVthumbs() {
+            return this.contVthumbs.children.length < kMaxVthumbCount;
+        }
+        lastVthumbPlayer() {
+            let children = this.contVthumbs.children;
+            return children.length ? children[children.length-1].playerGui : null;
+        }
+        firstVthumbPlayer() {
+            let children = this.contVthumbs.children;
+            return children.length ? children[0].playerGui : null;
+        }
+    }
+    class PlayerGui {
+        constructor(appGui, handle) {
+            this.appGui = appGui;
+            this.handle = handle;
+            let player = handle.player;
+
+            let table = this.view = createElemWithClass("table", "remote-player-container " + (handle.isHiRes ? "hires" : "vthumb"));
+            table.playerGui = this;
+            let playerCell = table.insertRow(-1).insertCell(-1);
+            setClass(playerCell, "remote-player-cell");
+            playerCell.appendChild(player);
+            let avatar = this.avatar = createElemWithClass("div", "avatar");
+            playerCell.appendChild(avatar);
+            let mute = this.muteIcon = createElemWithClass("div", "mute-icon");
+            hideElem(mute);
+            mute.innerHTML = "&#128263;";
+            playerCell.appendChild(mute);
+            let oho = this.onHoldOverlay = createElemWithClass("div", "on-hold");
+            hideElem(oho);
+            oho.innerHTML = "||";
+            playerCell.appendChild(oho);
+
+            if (handle.isHiRes) {
+                var self = this;
+                player.ondblclick = function() {
+                    self.handle.destroy();
+                };
+            } else {
+                let icon = this.screenshareIcon = createElemWithClass("div", "screenshare-icon");
+                icon.classList.add("hide");
+                icon.innerHTML = "&#128437;";
+                playerCell.appendChild(icon);
+            }
+                if (!localStorage.noAudioLevel) {
+                    let al = this.audioLevelDiv = createElemWithClass("div", "audio-level-ind");
+                    let cell = table.insertRow(-1).insertCell(0);
+                    cell.appendChild(al);
+                    if (handle.peer.isSpeaker) {
+                        // this is the codepath when we request the thumbnail video of an existing speaker
+                        // we didn't suscribe to its audio level in onPeerSpeaker() because we had no vThumbPlayer
+                        handle.peer.requestAudioLevel(this.onAudioLevel.bind(this));
+                    }
+                }
+
+                var self = this;
+                player.onclick = function() {
+                    let peer = self.handle.peer;
+                    if (!peer.hiResPlayer) {
+                        peer.requestHiResVideo(gHiResDivider);
+                    }
+                }
+
+            this.statsCont = table.insertRow(-1).insertCell(-1);
+            setClass(this.statsCont, "vthumbStats");
+            this.attachToDom();
+        }
+        attachToDom(prepend) {
+            let handle = this.handle;
+            let player = this.handle.player;
+            if (!handle.isHiRes) {
+                this.container = this.appGui.contVthumbs;
+                player.setAttribute("width", "160");
+                player.setAttribute("height", "90");
+            } else {
+                // speaker
+                this.container = this.appGui.contHires;
+                player.setAttribute("width", "320");
+                player.setAttribute("height", "180");
+            }
+            let userId = this.handle.peer.userId;
+            this.avatar.innerHTML = userId;
+            this.view.setAttribute("title", "user: '" + userId + "'\ncid=" + handle.peer.cid);
+
+            if (prepend) {
+                this.prepend();
+            } else {
+                this.append();
+            }
+            let av = this.handle.peer.av;
+            this.updateAvIndicators(av & Av.Audio, av & Av.Video);
+        };
+        append() {
+            this.container.appendChild(this.view);
+        };
+        prepend() {
+            let cont = this.container;
+            if (cont.firstChild) {
+                cont.insertBefore(this.view, cont.firstChild);
+            } else {
+                cont.appendChild(this.view);
+            }
+        }
+        onAttachedToTrack() {
+            this.attachToDom();
+            let handle = this.handle;
+            this.view.setAttribute("title", "user: '" + handle.peer.userId +
+                "'\nmid=" + handle.slot.mid + (handle.slot.isHiRes ? "(hd)":"") + " cid=" + handle.peer.cid);
+        }
+        onDestroy() {
+            this.container.removeChild(this.view);
+        }
+        onAvChange() {
+            this.updateAvIndicators();
+        }
+        onSpeaker(isSpeaker) {
+            this.updateAvIndicators();
+        }
+        onVthumbAttach() {
+            setClass(this.handle.vThumbPlayer, "speaker-thumb-player");
+            this.view.appendChild(this.handle.vThumbPlayer);
+        }
+        onVthumbDetach() {
+            this.view.removeChild(this.handle.vThumbPlayer);
+        }
+        updateAvIndicators() {
+            let av = this.handle.peer.av;
+            if (av & Av.Video) {
+                hideElem(this.avatar);
+            } else {
+                unhideElem(this.avatar);
+            }
+
+            if (!(av & Av.Audio) && this.handle.peer.isSpeaker) {
+                unhideElem(this.muteIcon);
+            } else {
+                hideElem(this.muteIcon);
+            }
+            if (!this.handle.isHiRes) {
+                if (av & Av.Screen) {
+                    unhideElem(this.screenshareIcon);
+                } else {
+                    hideElem(this.screenshareIcon);
+                }
+            }
+            if (av & Av.onHold) {
+                unhideElem(this.onHoldOverlay);
+            } else {
+                hideElem(this.onHoldOverlay);
+            }
+        }
+        onAudioLevel(level) {
+            level *= 4;
+            if (level > 1) {
+                level = 1;
+            }
+            this.audioLevelDiv.style.width = Math.round(level * 100) + "%";
+        }
+        onRxStats(track, info, raw) {
+            if (this.handle.vThumbPlayer && track === this.handle.vThumbPlayer.vTrack) {
+                return;
+            }
+            if (info.keyfps) {
+                info.keyfps = Math.round(info.keyfps * 100) / 100;
+            }
+            if (info.kbps) {
+                info.kbps = Math.round(info.kbps * 100) / 100;
+            }
+            info.per = Math.round(info.per * 1000) / 1000;
+            let text = raw.frameWidth
+                ? (raw.frameWidth + "x" + (this.handle.isHiRes ? raw.frameHeight : "") + " ")
+                : "";
+            text += "kfs:" + info.keyfps + ", fps:" + (raw.framesPerSecond || 0) + ", kbps:" + Math.round(info.kbps);
+            this.statsCont.innerHTML = text;
+            //console.log("stat:", JSON.stringify(info));
+        }
+    }
+
+    function onSpkCheckClick(event) {
+        let state = gClient.speakerState();
+        if (state === SfuClient.SpeakerState.kActive) {
+            gClient.stopSpeaking();
+        } else if (state === SfuClient.SpeakerState.kPending) {
+            gClient.cancelSpeakRequest();
+        } else {
+            gClient.requestStartSpeaking();
+        }
+    }
+    function onHoldChk(checked) {
+        if (checked) {
+            gClient.putOnHold();
+        } else {
+            gClient.releaseHold();
+        }
+    }
+    function onLocalVideoDblClick(event) {
+    }
+    function onVideoEnableChk(enable) {
+        gClient.muteCamera(!enable);
+    }
+    function onAudioEnableChk(enable) {
+        gClient.muteAudio(!enable);
+        // when we are not a speaker, local audio track is never obtained, so the event is never fired
+        //gGui.onLocalMediaChange(Av.Audio);
+    }
+    function onScreenshareEnableChk() {
+        gClient.enableScreenshare(!gClient.isSharingScreen());
+    }
+    function onLayerBtn() {
+        let spt = parseInt(layerRadios.elements.spatial.value);
+        let tmp = parseInt(layerRadios.elements.temporal.value);
+        gClient.requestSvcLayers(spt, tmp, tmp);
+    }
+    function createCall(callid, userid) {
+        console.warn("Creating new call");
+        return fetch("/newcall?id=" + callid + "&userid=" + userid);
+    }
+    async function start() {
+        if (!gClient.hasConnection()) {
+            let callid = urlParams.get("callid");
+            if (!callid) {
+                callid = randomString(11);
+                await createCall(callid, gClient.userId);
+            }
+            gClient.callid = callid;
+            let loc = window.location;
+            let wsUrl = "wss://"+ loc.hostname + ":" + loc.port+"/join?callid="+
+                callid+"&userid="+gClient.userId;
+            gClient.connect(wsUrl, callid);
+        } else {
+            gClient.disconnect();
+        }
+    }
+    function randomString(len) {
+        let result = "";
+        for (let i = 0; i < len; i++) {
+            result += String.fromCharCode(((i === 0) ? 65 : 97) + Math.random() * 26);
+        }
+        return result;
+    }
+    function generateCallKey() {
+        let key = new Uint8Array(16);
+        crypto.getRandomValues(key);
+        return SfuClient.binToHex(key);
+    }
+    function setClass(elem, cls) {
+        if (cls) {
+            elem.setAttribute("class", cls);
+        } else {
+            elem.removeAttribute("class");
+        }
+    }
+    function createElemWithClass(tag, cls) {
+        let elem = document.createElement(tag);
+        elem.setAttribute("class", cls);
+        return elem;
+    }
+    function byId(id) {
+        return document.getElementById(id);
+    }
+    function hideElem(elem) {
+        elem.classList.add("hide");
+    }
+    function unhideElem(elem) {
+        elem.classList.remove("hide");
+    }
+
+
+    let urlParams = (new URL(document.location)).searchParams;
+    var addParams;
+    let userName = urlParams.get("user");
+    if (!userName) {
+        do {
+            userName = prompt("Enter user name", randomString(11));
+        } while (!userName);
+        addParams = "user=" + userName;
+    };
+    if (!urlParams.get("key")) {
+        if (addParams) {
+            addParams += "&";
+        } else {
+            addParams = "";
+        }
+        addParams += "key=" + generateCallKey();
+    }
+
+    if (addParams) {
+        window.location.href = window.location.href + ((window.location.search)
+            ? "&" + addParams
+            : "?" + addParams);
+    } else {
+        var gGui = new App(document.body);
+        var gLocalVid = document.getElementById('localVideo');
+        var gLocalAvatar = document.getElementById("localAvatar");
+        let mod = urlParams.get("mod") !== "0";
+        SfuClient.kWorkerUrl = './worker.sfuClient.bundle.js';
+        var gClient = new SfuClient(userName, gGui, urlParams.get("key"), mod ? {moderator: true, speak: true} : {});
+        //  gClient.initialVthumbCount = 10;
+        var startBtn = document.getElementById("startBtn");
+        var spkCheck = document.getElementById("spkCheck");
+        var spkReqs = document.getElementById("spkReqs");
+        var screenChk = document.getElementById("screenshareChk");
+        var gHiResDivider = 0;
+        if (urlParams.get('nocam')) {
+            var gFakeVideoCanvas = document.getElementById('localCanvas');
+            gClient.fakeLocalVideoCanvas = gFakeVideoCanvas;
+            const scroller = new Scroller(gFakeVideoCanvas, {
+                text: userName,
+                speed: 3,
+                textColor: 'white',
+                bgColor: 'black',
+                font: 'Arial',
+                padding: 10,
+            });
+            scroller.animate();
+        }
+        if (!localStorage.noAutoConnect) {
+            setTimeout(() => start(), 0);
+        }
+    }
+    </script>
+    </body>
+    </html>
